@@ -1,0 +1,508 @@
+###############
+## simOutbreak
+###############
+simOutbreak <- function(R0, infec.curve, n.hosts=200, duration=50,
+                        seq.length=1e4, mu.transi=1e-4, mu.transv=mu.transi/2,
+                        rate.import.case=0.01, diverg.import=10,
+                        group.freq=1){
+
+    ## CHECKS ##
+    if(!require(ape)) stop("The ape package is required.")
+
+
+    ## HANDLE ARGUMENTS ##
+    ## handle group sizes
+    if(any(group.freq<0)) stop("negative group frequencies provided")
+    group.freq <- group.freq/sum(group.freq)
+    K <- length(group.freq)
+    ## host.group <- sample(1:K, size=n.hosts, prob=group.freq, replace=TRUE)
+    R0 <- rep(R0, length=K) # recycle R0
+
+    ## normalize gen.time
+    infec.curve <- infec.curve/sum(infec.curve)
+    infec.curve <- c(infec.curve, rep(0, duration)) # make sure dates go all the way
+    t.clear <- which(diff(infec.curve<1e-10)==1) # time at which infection is cleared
+
+    ## GENETIC FUNCTIONS ##
+    NUCL <- as.DNAbin(c("a","t","c","g"))
+    TRANSISET <- list('a'=as.DNAbin('g'), 'g'=as.DNAbin('a'), 'c'=as.DNAbin('t'), 't'=as.DNAbin('c'))
+    TRANSVSET <- list('a'=as.DNAbin(c('c','t')), 'g'=as.DNAbin(c('c','t')), 'c'=as.DNAbin(c('a','g')), 't'=as.DNAbin(c('a','g')))
+
+
+    ## AUXILIARY FUNCTIONS ##
+    ## generate sequence from scratch
+    seq.gen <- function(){
+        ##res <- list(sample(NUCL, size=seq.length, replace=TRUE)) # DNAbin are no longer lists by default
+        res <- sample(NUCL, size=seq.length, replace=TRUE)
+        class(res) <- "DNAbin"
+        return(res)
+    }
+
+    ## create substitutions for defined SNPs - no longer used
+    substi <- function(snp){
+        res <- sapply(1:length(snp), function(i) sample(setdiff(NUCL,snp[i]),1)) # ! sapply does not work on DNAbin vectors directly
+        class(res) <- "DNAbin"
+        return(res)
+    }
+
+    ## create transitions for defined SNPs
+    transi <- function(snp){
+        res <- unlist(TRANSISET[as.character(snp)])
+        class(res) <- "DNAbin"
+        return(res)
+    }
+
+    ## create transversions for defined SNPs
+    transv <- function(snp){
+        res <- sapply(TRANSVSET[as.character(snp)],sample,1)
+        class(res) <- "DNAbin"
+        return(res)
+    }
+
+    ## duplicate a sequence (including possible mutations)
+    seq.dupli <- function(seq, T){ # T is the number of time units between ancestor and decendent
+        ## transitions ##
+        n.transi <- rbinom(n=1, size=seq.length*T, prob=mu.transi) # total number of transitions
+        if(n.transi>0) {
+            idx <- sample(1:seq.length, size=n.transi, replace=FALSE)
+            seq[idx] <- transi(seq[idx])
+        }
+
+        ## transversions ##
+        n.transv <- rbinom(n=1, size=seq.length*T, prob=mu.transv) # total number of transitions
+        if(n.transv>0) {
+            idx <- sample(1:seq.length, size=n.transv, replace=FALSE)
+            seq[idx] <- transv(seq[idx])
+        }
+        return(seq)
+    }
+
+    ## define the group of 'n' hosts
+    choose.group <- function(n){
+        out <- sample(1:K, size=n, prob=group.freq, replace=TRUE)
+        return(out)
+    }
+
+
+    ## MAIN FUNCTION ##
+    ## initialize results ##
+    dynam <- data.frame(nsus=integer(duration+1), ninf=integer(duration+1), nrec=integer(duration+1))
+    rownames(dynam) <- 0:duration
+    res <- list(n=1, dna=NULL, dates=NULL, id=NULL, ances=NULL, dynam=dynam)
+    res$dynam$nsus[1] <- n.hosts-1
+    res$dynam$ninf[1] <- 1
+    res$dates[1] <- 0
+    res$ances <- NA
+    res$group <- choose.group(1)
+    EVE <- seq.gen()
+    res$dna <- matrix(seq.dupli(EVE, diverg.import),nrow=1)
+    class(res$dna) <- "DNAbin"
+
+    ## run outbreak ##
+    for(t in 1:duration){
+        ## INTERNAL INFECTIONS ##
+        ## individual force of infection
+        indivForce <- infec.curve[t-res$dates+1] * R0[res$group]
+
+        ## global force of infection (R0 \sum_j I_t^j / N)
+        N <- res$dynam$nrec[t] + res$dynam$ninf[t] + res$dynam$nsus[t]
+        globForce <- sum(indivForce)/N
+
+        ## stop if no ongoing infection in the population
+        if(globForce < 1e-12) break;
+
+        ## compute proba of infection for each susceptible
+        p <- 1-exp(-globForce)
+
+        ## number of new infections
+        nbNewInf <- rbinom(1, size=res$dynam$nsus[t], prob=p)
+
+        if(nbNewInf>0){
+            ## dates of new infections
+            res$dates <- c(res$dates, rep(t,nbNewInf))
+
+            ## ancestries of the new cases
+            temp <- as.vector(rmultinom(1, size=nbNewInf, prob=indivForce))
+            newAnces <- rep(which(temp>0), temp[which(temp>0)])
+            res$ances <- c(res$ances,newAnces)
+
+            ## groups of the new cases
+            newGroup <- choose.group(nbNewInf)
+            res$group <- c(res$group,newGroup)
+
+            ## dna sequences of the new cases
+            ##newSeq <- t(sapply(newAnces, function(i) seq.dupli(res$dna[i,], t-res$dates[i]))) # mol. clock per unit time
+            newSeq <- t(sapply(newAnces, function(i) seq.dupli(res$dna[i,], 1))) # mol. clock per generation
+            res$dna <- rbind(res$dna, newSeq)
+        }
+
+
+        ## IMPORTED CASES ##
+        ## number of imported cases
+        nbImpCases <- rpois(1, rate.import.case)
+        if(nbImpCases>0){
+            ## dates of imported cases
+            res$dates <- c(res$dates, rep(t, nbImpCases))
+
+            ## ancestries of the imported cases
+            res$ances <- c(res$ances, rep(NA, nbImpCases))
+
+            ## group of the imported cases
+            res$group <- c(res$group, choose.group(nbImpCases))
+
+            ## dna sequences of the new infections
+            newSeq <- t(sapply(1:nbImpCases, function(i) seq.dupli(EVE, diverg.import)))
+            res$dna <- rbind(res$dna, newSeq)
+        }
+
+        ## update nb of infected, recovered, etc.
+        res$dynam$nrec[t+1] <- sum(res$dates>=t.clear)
+        res$dynam$ninf[t+1] <- sum(res$dates>=0 & (t-res$dates) < t.clear)
+        res$dynam$nsus[t+1] <- res$dynam$nsus[t] - nbNewInf
+    } # end for
+
+
+    ## SHAPE AND RETURN OUTPUT ##
+    res$n <- nrow(res$dna)
+    res$id <- 1:res$n
+
+    findNmut <- function(i){
+        if(!is.na(res$ances[i]) && res$ances[i]>0){
+            out <- dist.dna(res$dna[c(res$id[i],res$ances[i]),], model="raw")*ncol(res$dna)
+        } else {
+            out <- NA
+        }
+        return(out)
+    }
+
+    ##res$nmut <- sapply(1:res$n, function(i) dist.dna(res$dna[c(res$id[i],res$ances[i]),], model="raw"))*ncol(res$dna)
+    res$nmut <- sapply(1:res$n, function(i) findNmut(i))
+    res$ngen <- rep(1, length(res$ances)) # number of generations
+    res$call <- match.call()
+    ## if(tree){
+    ##     res$tree <- fastme.ols(dist.dna(res$dna, model="TN93"))
+    ##     res$tree <- root(res$tree,"1")
+    ## }
+    class(res) <- "simOutbreak"
+    return(res)
+
+} # end simOutbreak
+
+
+
+
+
+
+
+
+##################
+## print.simOutbreak
+##################
+print.simOutbreak <- function(x, ...){
+
+    cat("\t\n=========================")
+    cat("\t\n=   simulated outbreak  =")
+    cat("\t\n=  (simOutbreak object) =")
+    cat("\t\n=========================\n")
+
+    cat("\nSize :", x$n,"cases (out of", x$dynam$nsus[1],"susceptible hosts)")
+    cat("\nGenome length :", ncol(x$dna),"nucleotids")
+    cat("\nDate range :", min(x$dates),"-",max(x$dates))
+    cat("\nGroup distribution:")
+    print(table(x$group))
+
+    cat("\nContent:\n")
+    print(names(x))
+
+    return(NULL)
+} # end print.simOutbreak
+
+
+
+
+
+
+
+##############
+## [.simOutbreak
+##############
+"[.simOutbreak" <- function(x,i,j,drop=FALSE){
+    res <- x
+    ## trivial subsetting ##
+    res$dna <- res$dna[i,,drop=FALSE]
+    res$id <- res$id[i]
+    res$dates <- res$dates[i]
+    res$group <- res$group[i]
+    res$n <- nrow(res$dna)
+    res$nmut <- x$nmut[i]
+    res$ngen <- x$ngen[i]
+
+    ## non-trivial subsetting ##
+    res$ances <- res$ances[i]
+    toFind <- !res$ances %in% res$id
+
+    ## function to find Most Recent Ancestor (MRA)
+    findMRA <- function(id){
+        out <- list(ances=x$ances[id], nmut=x$nmut[id], ngen=x$ngen[id])
+        if(is.na(out$ances)) return(out)
+        while(!is.na(out$ances) && !out$ances %in% res$id){
+            out$nmut <- out$nmut + x$nmut[out$ances]
+            out$ngen <- out$ngen + x$ngen[out$ances]
+            out$ances <- x$ances[out$ances]
+        }
+        if(is.na(out$ances)) return(list(ances=NA, nmut=NA, ngen=1))
+        return(out)
+    }
+
+    ## browse the tree to find indirect ancestries
+    if(any(toFind)){
+        temp <- sapply(res$id[toFind], findMRA)
+        res$ances[toFind] <- unlist(temp["ances",])
+        res$nmut[toFind] <- unlist(temp["nmut",])
+        res$ngen[toFind] <- unlist(temp["ngen",])
+    }
+
+    return(res)
+} # end subsetting method
+
+
+
+
+
+##################
+## labels.simOutbreak
+##################
+labels.simOutbreak <- function(object, ...){
+    return(object$id)
+}
+
+
+
+
+
+
+#########################
+## as.igraph.simOutbreak
+#########################
+as.igraph.simOutbreak <- function(x, edge.col="black", col.edge.by="dist", vertex.col="gold",
+                                  edge.col.pal=NULL, annot=c("dist","n.gen"), sep="/", ...){
+    if(!require(igraph)) stop("package igraph is required for this operation")
+    if(!require(ape)) stop("package ape is required for this operation")
+    if(!inherits(x,"simOutbreak")) stop("x is not a tTree object")
+    if(!require(adegenet)) stop("adegenet is required")
+    if(!col.edge.by %in% c("dist","n.gen","prob")) stop("unknown col.edge.by specified")
+
+    ## GET DAG ##
+    from <- as.character(x$ances)
+    to <- as.character(x$id)
+    isNotNA <- !is.na(from) & !is.na(to)
+    vnames <- unique(c(from,to))
+    vnames <- vnames[!is.na(vnames)]
+    dat <- data.frame(from,to,stringsAsFactors=FALSE)[isNotNA,,drop=FALSE]
+    out <- graph.data.frame(dat, directed=TRUE, vertices=data.frame(names=vnames))
+
+    ## from <- as.character(x$ances)
+    ## to <- as.character(x$id)
+    ## dat <- data.frame(from,to,stringsAsFactors=FALSE)[!is.na(x$ances),]
+    ## out <- graph.data.frame(dat, directed=TRUE)
+
+    ## SET VERTICE INFO ##
+    ## labels
+    V(out)$label <- V(out)$name
+
+    ## dates
+    names(x$dates) <- x$id
+    V(out)$date <- x$dates[V(out)$name]
+
+    ## ## groups
+    ## names(x$group) <- x$id
+    ## V(out)$group <- x$group[V(out)$name]
+
+    ## colors
+    V(out)$color <- vertex.col
+    ## V(out)$color <- fac2col(factor(V(out)$group), col.pal=vertex.col.pal)
+
+
+    ## SET EDGE INFO ##
+    ## genetic distances to ancestor
+    E(out)$dist <- x$nmut[!is.na(x$ances)]
+
+    ## number of generations to ancestor
+    E(out)$ngen <- x$ngen[!is.na(x$ances)]
+
+    ## colors
+    if(is.null(edge.col.pal)){
+        edge.col.pal <- function(n){
+            return(grey(seq(0.75,0,length=n)))
+        }
+    }
+    if(col.edge.by=="dist") edge.col <- num2col(E(out)$dist, col.pal=edge.col.pal, x.min=0, x.max=1)
+
+    ## labels
+    n.annot <- sum(annot %in% c("dist","n.gen"))
+    lab <- ""
+    if(!is.null(annot) && n.annot>0){
+        if("dist" %in% annot) lab <- E(out)$dist
+        if("n.gen" %in% annot) lab <- paste(lab, x$ngen[!is.na(x$ances)], sep=sep)
+    }
+    lab <- sub(paste("^",sep,sep=""),"",lab)
+    E(out)$label <- lab
+
+    ## SET LAYOUT ##
+    attr(out, "layout") <- layout.fruchterman.reingold(out, params=list(minx=V(out)$date, maxx=V(out)$date))
+
+    return(out)
+} # end as.igraph.simOutbreak
+
+
+
+
+
+
+
+#####################
+## plot.simOutbreak
+#####################
+plot.simOutbreak <- function(x, y=NULL, edge.col="black", col.edge.by="dist", vertex.col="gold",
+                              edge.col.pal=NULL, annot=c("dist","n.gen"), sep="/", ...){
+    if(!require(igraph)) stop("igraph is required")
+    if(!require(adegenet)) stop("adegenet is required")
+    if(!inherits(x,"simOutbreak")) stop("x is not a simOutbreak object")
+    if(!col.edge.by %in% c("dist","n.gen")) stop("unknown col.edge.by specified")
+
+    ## get graph ##
+    g <- as.igraph(x, edge.col=edge.col, col.edge.by=col.edge.by, vertex.col=vertex.col,
+                   edge.col.pal=edge.col.pal, annot=annot, sep=sep)
+
+     ## make plot ##
+    plot(g, layout=attr(g,"layout"), ...)
+
+    ## return graph invisibly ##
+    return(invisible(g))
+
+} # end plot.simOutbreak
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## #####################
+## ## seqTrack.simOutbreak
+## #####################
+## seqTrack.simOutbreak <- function(x, best=c("min","max"), prox.mat=NULL, ...){
+##     myX <- dist.dna(x$dna, model="raw")
+##     x.names <- labels(x)
+##     x.dates <- as.POSIXct(x)
+##     seq.length <- ncol(x$dna)
+##     myX <- myX * seq.length
+##     myX <- as.matrix(myX)
+##     prevCall <- as.list(x$call)
+##     if(is.null(prevCall$mu)){
+##         mu0 <- 0.0001
+##     } else {
+##         mu0 <- eval(prevCall$mu)
+##     }
+##     res <- seqTrack(myX, x.names=x.names, x.dates=x.dates, best=best, prox.mat=prox.mat,...)
+##     return(res)
+## }
+
+
+
+
+
+
+## ########################
+## ## as.seqTrack.simOutbreak
+## ########################
+## as.seqTrack.simOutbreak <- function(x){
+##     ## x.ori <- x
+##     ## x <- na.omit(x)
+##     toSetToNA <- x$dates==min(x$dates)
+##     res <- list()
+##     res$id <- labels(x)
+##     res <- as.data.frame(res)
+##     res$ances <- x$ances
+##     res$ances[toSetToNA] <- NA
+##     res$weight <- 1 # ??? have to recompute that...
+##     res$weight[toSetToNA] <- NA
+##     res$date <- as.POSIXct(x)[labels(x)]
+##     res$ances.date <- as.POSIXct(x)[x$ances]
+
+##     ## set results as indices rather than labels
+##     res$ances <- match(res$ances, res$id)
+##     res$id <- 1:length(res$id)
+
+##     ## SET CLASS
+##     class(res) <- c("seqTrack", "data.frame")
+
+##     return(res)
+## }
+
+
+
+
+
+
+
+
+## ###################
+## ## sample.simOutbreak
+## ###################
+## sample.simOutbreak <- function(x, n){
+## ##sample.simOutbreak <- function(x, n, rDate=.rTimeSeq, arg.rDate=NULL){
+##     ## EXTRACT THE SAMPLE ##
+##     res <- x[sample(1:nrow(x$dna), n, replace=FALSE)]
+
+
+##     ## RETRIEVE SOME PARAMETERS FROM HAPLOSIM CALL
+##     prevCall <- as.list(x$call)
+##     if(!is.null(prevCall$mu)){
+##         mu0 <- eval(prevCall$mu)
+##     } else {
+##         mu0 <- 1e-04
+##     }
+
+##     if(!is.null(prevCall$dna.length)){
+##         L <- eval(prevCall$dna.length)
+##     } else {
+##         L <- 1000
+##     }
+
+##     ## truedates <- res$dates
+##     ## daterange <- diff(range(res$dates,na.rm=TRUE))
+
+##     ## if(identical(rDate,.rTimeSeq)){
+##     ##     sampdates <- .rTimeSeq(n=length(truedates), mu=mu0, L=L, maxNbDays=daterange/2)
+##     ## } else{
+##     ##     arg.rDate$n <- n
+##     ##     sampdates <- do.call(rDate, arg.rDate)
+##     ## }
+##     ## sampdates <- truedates + abs(sampdates)
+
+##     return(res)
+## } # end sample.simOutbreak
+
+
+
+
+
+
+
+
+
+
+
+
+
+
