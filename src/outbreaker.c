@@ -18,12 +18,16 @@
 */
 
 void R_outbreaker(unsigned char *DNAbinInput, int *Tcollec, int *n, int *nSeq, int *length, 
-		  int *idxCasesInDna, double *gentimeDens, int *wTrunc, 
+		  int *idxCasesInDna, int *mutModel, double *gentimeDens, int *wTrunc, 
 		  double *colltimeDens, int *fTrunc,
+		  double *distMat, int *spaModel,
 		  int *ances, int *init_kappa, int *nIter, int *outputEvery, int *tuneEvery, 
 		  double *pi_param1, double *pi_param2, 
 		  double *init_mu1, double *init_gamma, 
-		  int *move_mut, int *move_alpha, int *move_kappa, int *move_Tinf, int *move_pi, 
+		  double *init_spa1, double *init_spa2, 
+		  double *spa1_prior, double *spa2_prior,
+		  int *move_mut, int *move_alpha, int *move_kappa, int *move_Tinf, 
+		  int *move_pi, int *move_spa,
 		  int *find_import, int *burnin, int *find_import_at, 
 		  double *outlier_threshold,
 		  int *quiet, int *vecDist, int *stepStopTune,
@@ -35,6 +39,7 @@ void R_outbreaker(unsigned char *DNAbinInput, int *Tcollec, int *n, int *nSeq, i
     gentime *gen;
     param *par;
     dna_dist * dnainfo;
+    spatial_dist * spatialinfo;
     mcmc_param * mcmcPar;
     int i,j, counter;
 
@@ -66,14 +71,20 @@ void R_outbreaker(unsigned char *DNAbinInput, int *Tcollec, int *n, int *nSeq, i
 
     /* CREATE AND INIT PARAMETERS */
     par = alloc_param(N);
-    init_param(par, dat,  gen, ances, init_kappa, *pi_param1, *pi_param2, *init_mu1, *init_gamma, *outlier_threshold, rng);
+    init_param(par, dat,  gen, ances, init_kappa, *pi_param1, *pi_param2, *init_mu1, *init_gamma, *init_spa1, *init_spa2, *spa1_prior, *spa2_prior, *outlier_threshold, *mutModel, *spaModel, rng);
     /* print_param(par); */
 
 
     /* COMPUTE GENETIC DISTANCES */
-    dnainfo = compute_dna_distances(dat->dna);
+    dnainfo = compute_dna_distances(dat->dna, *mutModel);
     /* Rprintf("\n>>> DNA info <<<\n"); */
     /* print_dna_dist(dnainfo); */
+
+
+    /* CONVERT AND STORE SPATIAL DISTANCES */
+    spatialinfo = doublevec2spatial_dist(distMat, n);
+    /* Rprintf("\n>>> SPATIAL info <<<\n"); */
+    /* print_spatial_dist(spatialinfo); */
 
 
    /*  /\* COMPUTE PRIORS *\/ */
@@ -91,12 +102,14 @@ void R_outbreaker(unsigned char *DNAbinInput, int *Tcollec, int *n, int *nSeq, i
    /*  /\* ALLOCATE AND INITIALIZE MCMC PARAMETERS *\/ */
    /*  Rprintf("\nBefore check init LL\n");fflush(stdout);fflush(stdout); */
 
-    mcmcPar = alloc_mcmc_param(dat->n);
-    init_mcmc_param(mcmcPar, dat, (bool) *move_mut, move_alpha, move_kappa, (bool) *move_Tinf, 
-		    (bool) *move_pi, (bool) *find_import, *burnin, *find_import_at);
+    mcmcPar = alloc_mcmc_param(N);
+    init_mcmc_param(mcmcPar, par, dat, (bool) *move_mut, move_alpha, move_kappa, (bool) *move_Tinf, 
+		    (bool) *move_pi, (bool) *move_spa, (bool) *find_import, *burnin, *find_import_at);
+    /* Rprintf("\nMCMC parameters\n");fflush(stdout); */
+    /* print_mcmc_param(mcmcPar); */
 
     /* CHECK THAT INITIAL STATE HAS A NON-NULL LIKELIHOOD */
-    checkLike = check_loglikelihood_all(dat, dnainfo, gen, par, rng);
+    checkLike = check_loglikelihood_all(dat, dnainfo, spatialinfo, gen, par, rng);
     if(!checkLike){
       warning("\n\n!WARNING! Initial state of the chain has a likelihood of zero. The chain may never converge. Please consider using a different initial tree.\n");
       /* fprintf(stderr, "\n\n!WARNING! Initial state of the chain has a likelihood of zero. The chain may never converge. Please consider using a different initial tree.\n"); */
@@ -108,7 +121,7 @@ void R_outbreaker(unsigned char *DNAbinInput, int *Tcollec, int *n, int *nSeq, i
 
     /* RUN MCMC */
     mcmc(*nIter, *outputEvery, *res_file_name, *tune_file_name, *tuneEvery,
-	 (bool) *quiet, par, dat, dnainfo, gen, mcmcPar, rng);
+	 (bool) *quiet, par, dat, dnainfo, spatialinfo, gen, mcmcPar, rng);
 
     /* Rprintf("\nAfter MCMC\n");fflush(stdout); */
 
@@ -116,7 +129,7 @@ void R_outbreaker(unsigned char *DNAbinInput, int *Tcollec, int *n, int *nSeq, i
     counter = 0;
     for(i=0;i<(N-1);i++){
 	for(j=i+1;j<N;j++){
-	    vecDist[counter++] = transi_ij(i,j,dat,dnainfo) + transv_ij(i,j,dat,dnainfo);
+	    vecDist[counter++] = mutation1_ij(i,j,dat,dnainfo) + mutation2_ij(i,j,dat,dnainfo);
 	}
     }
 

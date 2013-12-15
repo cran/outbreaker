@@ -168,7 +168,7 @@ transGraph <- function(x, labels=NULL, burnin=x$burnin, threshold=0.2, col.pal=N
 
 
     ## set layout
-    attr(out, "layout") <- layout.fruchterman.reingold(out, params=list(minx=V(out)$dates, maxx=V(out)$dates), rescale=FALSE)
+    attr(out, "layout") <- layout.fruchterman.reingold(out, params=list(minx=V(out)$onset, maxx=V(out)$onset), rescale=FALSE)
 
 
     ## MAKE THE PLOT ##
@@ -193,11 +193,13 @@ transGraph <- function(x, labels=NULL, burnin=x$burnin, threshold=0.2, col.pal=N
     return(-sum(p*log(p), na.rm=TRUE))
 }
 
-plotOutbreak <- function(x, burnin=x$burnin, thres.hide=0.2,
-                         col=NULL, col.pal=colorRampPalette(c("blue","lightgrey")),
-                         arr.col.pal=NULL, cex.bubble=1, lwd.arrow=2, xlim=NULL, ...){
+plotOutbreak <- function(x, burnin=x$burnin, thres.hide=0.2, col=NULL,
+                         col.pal=colorRampPalette(c("blue","lightgrey")), edge.col.pal=NULL,
+                         col.edge.by="prob", annot=c("dist","prob"), sep="/", cex.bubble=1,
+                         edge.max.dist=10,lwd.arrow=2, xlim=NULL, ...){
     ## CHECKS ##
     ## if(!require(adegenet)) stop("adegenet is not installed")
+    col.edge.by <- match.arg(col.edge.by, c("dist","prob"))
 
     ## GET TREE ##
     tre <- get.tTree(x,burnin=burnin)
@@ -248,13 +250,22 @@ plotOutbreak <- function(x, burnin=x$burnin, thres.hide=0.2,
 
 
     ## ADD ANCESTRIES
-    if(is.null(arr.col.pal)){
-        arr.col.pal <- function(n){
+    if(is.null(edge.col.pal)){
+        edge.col.pal <- function(n){
             return(grey(seq(1,0,length=n)))
         }
     }
 
-    ## function to draw arrows
+    ## ## FUNCTION TO FIND THE NUMBER OF MUTATIONS DISPLAYED ##
+    ## ## (required to define the color scale for arrows ##
+    ## get.nb.mut <- function(from, to){
+    ##      support <- alphadat[from,to]
+    ##      nb.mut <- M[from,to]
+    ##      if(support<thres.hide) nb.mut <- 0
+    ##      return(nb.mut)
+    ##  }
+
+    ## FUNCTION TO DRAW ARROWS ##
     drawArrow <- function(from, to){
         if(is.na(from)||from<1) return(invisible())
         ## get stuff for arrows ##
@@ -266,35 +277,51 @@ plotOutbreak <- function(x, burnin=x$burnin, thres.hide=0.2,
         y.to <- to
         support <- alphadat[from,to]
         ## col <- col[from]
-        arr.col <- num2col(support, x.min=0, x.max=1, col.pal=arr.col.pal)
-        arr.col[support<thres.hide] <- "transparent"
+        if(col.edge.by=="prob"){
+            edge.col <- num2col(support, x.min=0, x.max=1, col.pal=edge.col.pal)
+        }
+        if(col.edge.by=="dist"){
+            edge.col <- num2col(as.integer(M[from,to]), x.min=0, x.max=edge.max.dist, col.pal=edge.col.pal)
+        }
+        edge.col[support<thres.hide] <- "transparent"
         ## lwd <- round(support*arrow.max)
         ## col.back <- rep("transparent",N)
         ## col.back[lwd>=2] <- "black"
 
         ## draw arrows ##
-        arrows(x.from, y.from, x.to, y.to, col=arr.col, length=0.1, angle=20, lwd=lwd.arrow)
+        arrows(x.from, y.from, x.to, y.to, col=edge.col, length=0.1, angle=20, lwd=lwd.arrow)
 
         ## get stuff for annotations ##
         if(support>=thres.hide){
             x.ann <- (x.from + x.to)/2
             y.ann <- 0.15+(y.from + y.to)/2
-            ## nb mut
-            ann <- M[from,to]
-            text(x.ann,y.ann,ann)
+
+            lab <- ""
+            if(!is.null(annot) && length(annot)>0){
+                if(any(c("dist","nb.mut","mut") %in% annot)) lab <- M[from,to]
+                if(any(c("support","prob") %in% annot)) lab <- paste(lab, round(support,2), sep=sep)
+            }
+            lab <- sub(paste("^",sep,sep=""),"",lab)
+            text(x.ann,y.ann,lab)
         }
         return(invisible())
     }
 
-
-    ## draw all arrows
+    ## DRAW ALL ARROWS ##
     ances <- apply(alpha,2,function(e) table(e)/sum(e))
     names(ances) <- 1:N
+
+    ##  ## need to determine max nb of mutations if col.edge.by=="dist" ##
+    ## if(col.edge.by=="dist"){
+    ##     allMut <- unlist(lapply(1:N, function(i) sapply(as.integer(names(ances[[i]])), function(from) get.nb.mut(from, i))))
+    ##     max.nb.mut <- max(allMut,na.rm=TRUE)
+    ## }
+
     lapply(1:N, function(i) sapply(as.integer(names(ances[[i]])), function(from) drawArrow(from, i)))
 
 
     ## BUILT RESULT AND RETURN ##
-    res <- list(col=col, col.pal=col.pal, entropy=entropy, arr.col.pal=arr.col.pal)
+    res <- list(col=col, col.pal=col.pal, entropy=entropy, edge.col.pal=edge.col.pal)
     return(invisible(res))
 } # end plotOutbreak
 

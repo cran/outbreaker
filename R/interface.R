@@ -3,18 +3,22 @@
 ## main functions
 ##################
 outbreaker <- function(dna=NULL, dates, idx.dna=NULL,
+                       mut.model=1, spa.model=1,
                        w.dens, w.trunc=length(w.dens),
                        f.dens=w.dens, f.trunc=length(f.dens),
-                       init.tree=c("seqTrack","random","star","none"),
-                       init.kappa=NULL,
+                       dist.mat=NULL,
+                       init.tree=c("seqTrack","random","star"),
+                       init.kappa=NULL, init.mu1=NULL, init.mu2=init.mu1,
+                       init.spa1=NULL, init.spa2=NULL,
                        n.iter=1e5, sample.every=500, tune.every=500,
                        burnin=2e4, find.import=TRUE, find.import.n=50,
                        pi.param1=10, pi.param2=1,
-                       init.mu1=NULL, init.gamma=1,
+                       spa1.prior=1, spa2.prior=1,
                        move.mut=TRUE, move.ances=TRUE, move.kappa=TRUE,
-                       move.Tinf=TRUE, move.pi=TRUE,
-                       outlier.threshold = 1000,
-                       quiet=TRUE, res.file.name="chains.txt", tune.file.name="tuning.txt", seed=NULL){
+                       move.Tinf=TRUE, move.pi=TRUE, move.spa=TRUE,
+                       outlier.threshold = 5,
+                       quiet=TRUE, res.file.name="chains.txt",
+                       tune.file.name="tuning.txt", seed=NULL){
 
     ## CHECKS ##
     ## if(!require(ape)) stop("the ape package is required but not installed")
@@ -25,8 +29,8 @@ outbreaker <- function(dna=NULL, dates, idx.dna=NULL,
         dna <- as.DNAbin(matrix('a',ncol=10,nrow=length(dates)))
         move.mut <- FALSE
         find.import <- FALSE
-        init.tree <- "star"
-        init.mu1 <- 0
+        if(is.character(init.tree) && match.arg(init.tree)=="seqTrack") init.tree <- "star"
+        init.mu1 <- init.mu2 <-0
         init.gamma <- 1
     }
 
@@ -46,8 +50,7 @@ outbreaker <- function(dna=NULL, dates, idx.dna=NULL,
     w.dens[w.dens<0] <- 0
     if(sum(w.dens) <= 1e-14) stop("w.dens is zero everywhere")
     if(!is.null(init.mu1) && init.mu1<0) stop("init.mu1 < 0")
-    if(!is.null(init.gamma) && init.gamma <= 1e-14) stop("init.gamma <= 0")
-
+    if(!is.null(init.mu2) && init.mu2<0) stop("init.mu2 < 0")
 
 
     ## PROCESS INPUTS ##
@@ -85,6 +88,22 @@ outbreaker <- function(dna=NULL, dates, idx.dna=NULL,
     idx.dna.for.cases[is.na(idx.dna.for.cases)] <- 0
     idx.dna.for.cases <- as.integer(idx.dna.for.cases-1) # for C
 
+    ## check mutational model ##
+    ## check model
+    mut.model <- as.integer(mut.model)
+    if(!mut.model %in% c(1L,2L)) stop("unknown mutational model requested; accepted values are: 1, 2")
+    ## determine gamma
+    if(!is.null(init.mu1) && !is.null(init.mu2)){
+        init.gamma <- init.mu2/init.mu1
+        if(is.na(init.gamma) || is.infinite(init.gamma)) init.gamma <- 1 # in case rates are both 0
+    } else{
+        init.gamma <- 1
+    }
+    ## force gamma to 1 for model 1
+    if(mut.model==1L){
+        init.gamma <- 1
+    }
+
     ## check generation time function ##
     w.dens <- as.double(w.dens)
     w.dens <- w.dens/sum(w.dens)
@@ -96,6 +115,33 @@ outbreaker <- function(dna=NULL, dates, idx.dna=NULL,
     f.dens <- f.dens/sum(f.dens)
     if(any(is.na(f.dens))) stop("NAs in f.dens after normalization")
     f.trunc <- as.integer(f.trunc)
+
+    ## check spatial distances ##
+    if(!is.null(dist.mat)){
+        if(!inherits(dist.mat,"matrix")) dist.mat <- as.matrix(dist.mat)
+        if(nrow(dist.mat) != ncol(dist.mat)) stop("matrix of distances (dist.mat) is not square")
+        if(nrow(dist.mat) != length(dates)) stop("wrong dimension for the matrix of distances")
+        if(any(is.na(dist.mat))) stop("NAs in the distance matrix")
+    } else {
+        dist.mat <- matrix(0, ncol=length(dates), nrow=length(dates))
+        spa.model <- 0L
+    }
+
+    ## check spatial model ##
+    spa.model <- as.integer(spa.model)
+    if(!spa.model %in% c(0L,1L)) stop("unknown spatial model requested; accepted values are: 0, 1")
+    ## model 0: no spatial info
+    if(spa.model == 0L) {
+        dist.mat <- matrix(0, ncol=length(dates), nrow=length(dates))
+        init.spa1 <- init.spa2 <- 0
+    }
+    ## model 1: normal dispersal
+    if(spa.model == 1L) {
+        init.spa1 <- 1
+        init.spa2 <- 0
+        spa1.prior <- max(0.0, spa1.prior)
+    }
+
 
     ## init.kappa ##
     ## if NULL, will be ML assigned (code is kappa_i<0)
@@ -110,9 +156,14 @@ outbreaker <- function(dna=NULL, dates, idx.dna=NULL,
     diag(canBeAnces) <- FALSE
 
     if(is.character(init.tree)){
+        ## check init
+        if(init.tree=="seqTrack" && !all(1:n.ind %in% idx.dna)) {
+            warning("Can't use seqTrack initialization with missing DNA sequences - using a star-like tree")
+            init.tree <- "star"
+        }
+
         ## seqTrack init
         if(init.tree=="seqTrack"){
-            if(!all(1:n.ind %in% idx.dna)) stop("can't use seqTrack initialization with missing DNA sequences")
             D <- as.matrix(dist.dna(dna, model="TN93"))
             D[!canBeAnces] <- 1e15
             ances <- apply(D,2,which.min)-1 # -1 for compatibility with C
@@ -135,10 +186,10 @@ outbreaker <- function(dna=NULL, dates, idx.dna=NULL,
             ances <- as.integer(ances-1) # put on C scale
         }
 
-        ## no ancestry init
-        if(init.tree=="none"){
-            ances <- as.integer(rep(-1,length(dates)))
-        }
+        ## ## no ancestry init
+        ## if(init.tree=="none"){
+        ##     ances <- as.integer(rep(-1,length(dates)))
+        ## }
     }
 
     ## handle seed ##
@@ -166,11 +217,16 @@ outbreaker <- function(dna=NULL, dates, idx.dna=NULL,
     }
     init.mu1 <- as.double(init.mu1)
     init.gamma <- as.double(init.gamma)
+    init.spa1 <- as.double(init.spa1)
+    init.spa2 <- as.double(init.spa2)
+    spa1.prior <- as.double(spa1.prior)
+    spa2.prior <- as.double(spa2.prior)
     move.mut <- as.integer(move.mut)
     move.ances <- as.integer(rep(move.ances, length=n.ind))
     move.kappa <- as.integer(rep(move.kappa, length=n.ind))
     move.Tinf <- as.integer(move.Tinf)
     move.pi <- as.integer(move.pi)
+    move.spa <- as.integer(move.spa)
     quiet <- as.integer(quiet)
     res.file.name <- as.character(res.file.name)[1]
     tune.file.name <- as.character(tune.file.name)[1]
@@ -183,19 +239,21 @@ outbreaker <- function(dna=NULL, dates, idx.dna=NULL,
     stopTuneAt <- integer(1)
 
     temp <- .C("R_outbreaker",
-               dnaraw, dates, n.ind, n.seq, n.nucl,  idx.dna.for.cases,
+               dnaraw, dates, n.ind, n.seq, n.nucl,  idx.dna.for.cases, mut.model,
                w.dens, w.trunc, f.dens, f.trunc,
+               dist.mat, spa.model,
                ances, init.kappa, n.iter, sample.every, tune.every,
                pi.param1, pi.param2, init.mu1, init.gamma,
+               init.spa1, init.spa2, spa1.prior, spa2.prior,
                move.mut, move.ances, move.kappa, move.Tinf,
-               move.pi,
+               move.pi, move.spa,
                find.import.int, burnin, find.import.at, outlier.threshold, quiet,
                dna.dist, stopTuneAt, res.file.name, tune.file.name, seed,
                PACKAGE="outbreaker")
 
-    D <- temp[[30]]
+    D <- temp[[38]]
     D[D<0] <- NA
-    stopTuneAt <- temp[[31]]
+    stopTuneAt <- temp[[39]]
 
     cat("\nComputations finished.\n\n")
 
@@ -228,22 +286,27 @@ outbreaker <- function(dna=NULL, dates, idx.dna=NULL,
 ## version with multiple runs
 ###############################
 outbreaker.parallel <- function(n.runs, parallel=require("parallel"), n.cores=NULL,
-                                dna=NULL, dates, idx.dna=NULL, w.dens, w.trunc=length(w.dens),
+                                dna=NULL, dates, idx.dna=NULL, mut.model=1, spa.model=1,
+                                w.dens, w.trunc=length(w.dens),
                                 f.dens=w.dens, f.trunc=length(f.dens),
-                                init.tree=c("seqTrack","random","star","none"),
+                                dist.mat=NULL,
+                                init.tree=c("seqTrack","random","star"),
                                 init.kappa=NULL,
+                                init.mu1=NULL, init.mu2=init.mu1,
+                                init.spa1=NULL, init.spa2=NULL,
                                 n.iter=1e5, sample.every=500, tune.every=500,
                                 burnin=2e4, find.import=TRUE, find.import.n=50,
                                 pi.param1=10, pi.param2=1,
-                                init.mu1=NULL, init.gamma=1,
+                                spa1.prior=1, spa2.prior=1,
                                 move.mut=TRUE, move.ances=TRUE, move.kappa=TRUE,
-                                move.Tinf=TRUE, move.pi=TRUE, outlier.threshold = 1000,
+                                move.Tinf=TRUE, move.pi=TRUE, move.spa=TRUE, outlier.threshold = 5,
                                 quiet=TRUE, res.file.name="chains.txt", tune.file.name="tuning.txt", seed=NULL){
 
     ## SOME CHECKS ##
     if(parallel && !require(parallel)) stop("parallel package requested but not installed")
     if(parallel && is.null(n.cores)){
-        n.cores <- parallel:::detectCores()
+        n.cores <- detectCores()
+        n.cores <- min(n.cores, 6)
     }
 
 
@@ -269,21 +332,28 @@ outbreaker.parallel <- function(n.runs, parallel=require("parallel"), n.cores=NU
         clusterEvalQ(clust, library(outbreaker))
 
         ## transfer data onto each child ##
-        listArgs <- c("dna", "dates", "idx.dna", "w.dens", "w.trunc", "init.tree", "init.kappa", "n.iter", "sample.every", "tune.every", "burnin", "find.import", "find.import.n", "pi.param1", "pi.param2", "init.mu1", "init.gamma", "move.mut", "move.ances", "move.kappa", "move.Tinf", "move.pi", "res.file.names", "tune.file.names", "seed")
+        listArgs <- c("dna", "dates", "idx.dna", "w.dens", "w.trunc", "f.dens", "f.trunc", "dist.mat", "spa.model", "init.tree", "init.kappa", "n.iter",
+                      "sample.every", "tune.every", "burnin", "find.import", "find.import.n", "pi.param1", "pi.param2", "init.mu1", "init.mu2", "move.mut",
+                      "move.ances", "move.kappa", "move.Tinf", "move.pi", "res.file.names", "tune.file.names", "seed")
 
         clusterExport(clust, listArgs, envir=environment())
 
         ## set calls to outbreaker on each child ##
-        res <- parLapply(clust, 1:n.runs, function(i)  outbreaker(dna=dna, dates=dates, idx.dna=idx.dna, w.dens=w.dens, w.trunc=w.trunc,
+        res <- parLapply(clust, 1:n.runs, function(i)  outbreaker(dna=dna, dates=dates, idx.dna=idx.dna,
+                                                                  mut.model=mut.model, spa.model=spa.model,
+                                                                  w.dens=w.dens, w.trunc=w.trunc,
                                                                   f.dens=f.dens, f.trunc=f.trunc,
+                                                                  dist.mat=dist.mat,
                                                                   init.tree=init.tree, init.kappa=init.kappa,
                                                                   n.iter=n.iter, sample.every=sample.every,
                                                                   tune.every=tune.every, burnin=burnin,
                                                                   find.import=find.import, find.import.n=find.import.n,
                                                                   pi.param1=pi.param1, pi.param2=pi.param2,
-                                                                  init.mu1=init.mu1, init.gamma=init.gamma,
+                                                                  init.mu1=init.mu1, init.mu2=init.mu2,
+                                                                  init.spa1=init.spa1, init.spa2=init.spa2,
+                                                                  spa1.prior=spa1.prior, spa2.prior=spa2.prior,
                                                                   move.mut=move.mut, move.ances=move.ances, move.kappa=move.kappa,
-                                                                  move.Tinf=move.Tinf, move.pi=move.pi,
+                                                                  move.Tinf=move.Tinf, move.pi=move.pi, move.spa=move.spa,
                                                                   outlier.threshold = outlier.threshold,
                                                                   quiet=TRUE, res.file.name=res.file.names[i],
                                                                   tune.file.name=tune.file.names[i], seed=seed[i]))
@@ -298,23 +368,27 @@ outbreaker.parallel <- function(n.runs, parallel=require("parallel"), n.cores=NU
         ##                                                     tune.every=tune.every, burnin=burnin,
         ##                                                     find.import=find.import, find.import.n=find.import.n,
         ##                                                     pi.param1=pi.param1, pi.param2=pi.param2,
-        ##                                                     init.mu1=init.mu1, init.gamma=init.gamma,
+        ##                                                     init.mu1=init.mu1, init.mu2=init.mu2,
         ##                                                     move.mut=move.mut, move.ances=move.ances, move.kappa=move.kappa,
         ##                                                     move.Tinf=move.Tinf, move.pi=move.pi,
         ##                                                     quiet=TRUE, res.file.name=res.file.names[i],
         ##                                                     tune.file.name=tune.file.names[i], seed=seed[i]),
         ##                   mc.cores=n.cores, mc.silent=FALSE, mc.cleanup=TRUE, mc.preschedule=TRUE, mc.set.seed=TRUE)
     } else {
-        res <- lapply(1:n.runs, function(i)  outbreaker(dna=dna, dates=dates, idx.dna=idx.dna, w.dens=w.dens, w.trunc=w.trunc,
+        res <- lapply(1:n.runs, function(i)  outbreaker(dna=dna, dates=dates, idx.dna=idx.dna, mut.model=mut.model,
+                                                        w.dens=w.dens, w.trunc=w.trunc,
                                                         f.dens=f.dens, f.trunc=f.trunc,
+                                                        dist.mat=dist.mat, spa.model=spa.model,
                                                         init.tree=init.tree, init.kappa=init.kappa,
                                                         n.iter=n.iter, sample.every=sample.every,
                                                         tune.every=tune.every, burnin=burnin,
                                                         find.import=find.import, find.import.n=find.import.n,
                                                         pi.param1=pi.param1, pi.param2=pi.param2,
-                                                        init.mu1=init.mu1, init.gamma=init.gamma,
+                                                        init.mu1=init.mu1, init.mu2=init.mu2,
+                                                        init.spa1=init.spa1, init.spa2=init.spa2,
+                                                        spa1.prior=spa1.prior, spa2.prior=spa2.prior,
                                                         move.mut=move.mut, move.ances=move.ances, move.kappa=move.kappa,
-                                                        move.Tinf=move.Tinf, move.pi=move.pi,
+                                                        move.Tinf=move.Tinf, move.pi=move.pi, move.spa=move.spa,
                                                         outlier.threshold = outlier.threshold,
                                                         quiet=TRUE, res.file.name=res.file.names[i],
                                                         tune.file.name=tune.file.names[i], seed=seed[i]))
