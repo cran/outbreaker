@@ -1,9 +1,9 @@
-a09143c5fbf660812c54e373f0b8bc8a *ChangeLog
-667b724d10165d45399de67a2aa4db38 *DESCRIPTION
+58c588de81db556a2ccf5fb55fadf9a8 *ChangeLog
+5b3e9086f5dba3bb4f9c0070ae843324 *DESCRIPTION
 b1c3a9ccc2b95d7b57297d94b2386013 *NAMESPACE
-bfafbe772250679e8d4789a1045d967d *R/interface.R
+ea4f0cb4ee6dff1ded2d65256bd3e54b *R/interface.R
 c0d0d9160caaf41e22f0265b788c7e00 *R/mutationRates.R
-4025cb3456290224f7625bfe02ec3d37 *R/plot.R
+9a32af7fc041e4b0647256cd3b1c0d78 *R/plot.R
 7c5f7e13c48e36773a0bf21ccf150540 *R/reproRate.R
 dc26678070da5a3942b779aa0670d4f3 *R/selectChains.R
 4165628403dee64f801de3540f4b8ffb *R/simOutbreak.R
@@ -17,7 +17,7 @@ a6d485ade20b5042ab8459e99f45c895 *configure.ac
 c774351eefcfdd1193bc820ceb2efd8c *man/fakeOutbreak.Rd
 673bb1c09567800e344e804d57e63b67 *man/getMu.Rd
 267f2b08e08a12fe2d620bd8710fdcd1 *man/mainplots.Rd
-fd8a6370fccec1775c3d54e4249ea8a4 *man/outbreaker.Rd
+62981b79f3ac347f5b2228279b6bdf52 *man/outbreaker.Rd
 9371cd191f2415c26d7200ca4e54c38c *man/selectChains.Rd
 b294e1d1c2e6f6e4ed85a92ac499fee2 *man/simOutbreak.Rd
 d88c062ac774d6aa5583ea359f503b61 *man/tTree.Rd
@@ -38,7 +38,7 @@ b5e29a394d577993c7b301e2235c40ec *src/matvec.h
 24b99bbb49670919ed20fa28174b6b8d *src/mcmc.h
 d2e08330f7182fdba96fd4bd162466a3 *src/moves.c
 e61ce64e7da21b57a04ad3987beab313 *src/moves.h
-e1dc5309b8e353608cdc4272d056ebf1 *src/outbreaker.c
+3ea48b34fbb6c7a649527d6c7840f1c6 *src/outbreaker.c
 935f5bfe6339de0e2090a744d14c6224 *src/prior.c
 429d8a269ab703fda89931e9c6404dfc *src/prior.h
 3c4e5424154f6618efc17ccd2ed42d1a *src/structures.c
