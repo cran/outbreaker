@@ -1,6 +1,6 @@
 Package: outbreaker
-Version: 1.1-1
-Date: 2013/12/31
+Version: 1.1-2
+Date: 2014/04/28
 Title: Bayesian reconstruction of disease outbreaks by combining
         epidemiologic and genomic data
 Author: Thibaut Jombart <t.jombart@imperial.ac.uk>, Anne Cori, Xavier Didelot, Simon Cauchemez, Christophe Fraser, Neil Ferguson
@@ -11,7 +11,7 @@ Imports: utils, ape, igraph, adegenet, parallel
 URL: http://sites.google.com/site/therepiproject/r-pac/outbreaker
 Description: Bayesian reconstruction of disease outbreaks using epidemiological and genetic information.
 License: GPL (>= 2)
-Packaged: 2013-12-30 10:00:43 UTC; thibaut
+Packaged: 2014-04-28 16:03:50 UTC; thibaut
 NeedsCompilation: yes
 Repository: CRAN
-Date/Publication: 2013-12-30 11:19:07
+Date/Publication: 2014-04-28 19:47:01

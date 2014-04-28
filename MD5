@@ -1,7 +1,7 @@
 58c588de81db556a2ccf5fb55fadf9a8 *ChangeLog
-5b3e9086f5dba3bb4f9c0070ae843324 *DESCRIPTION
+4ba24d5b98f19769aed503c9e1850514 *DESCRIPTION
 b1c3a9ccc2b95d7b57297d94b2386013 *NAMESPACE
-ea4f0cb4ee6dff1ded2d65256bd3e54b *R/interface.R
+9a0e35cba236939ec9ce5bda030d8fcd *R/interface.R
 c0d0d9160caaf41e22f0265b788c7e00 *R/mutationRates.R
 9a32af7fc041e4b0647256cd3b1c0d78 *R/plot.R
 7c5f7e13c48e36773a0bf21ccf150540 *R/reproRate.R
