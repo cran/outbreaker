@@ -1,7 +1,7 @@
-58c588de81db556a2ccf5fb55fadf9a8 *ChangeLog
-4ba24d5b98f19769aed503c9e1850514 *DESCRIPTION
+6f7601de240d16818c58279443234e82 *ChangeLog
+0afe399fe818cbf347093bab4ed0587b *DESCRIPTION
 b1c3a9ccc2b95d7b57297d94b2386013 *NAMESPACE
-9a0e35cba236939ec9ce5bda030d8fcd *R/interface.R
+5a4911c7c93d8f013f5b4d50f177664f *R/interface.R
 c0d0d9160caaf41e22f0265b788c7e00 *R/mutationRates.R
 9a32af7fc041e4b0647256cd3b1c0d78 *R/plot.R
 7c5f7e13c48e36773a0bf21ccf150540 *R/reproRate.R
@@ -11,7 +11,7 @@ dc26678070da5a3942b779aa0670d4f3 *R/selectChains.R
 92d8aa7bf09017257369dcfdf00a82cb *R/zzz.R
 72b5047fee7ef404647d8c939b9ec91b *configure
 a6d485ade20b5042ab8459e99f45c895 *configure.ac
-999579b31cc165da3ac161c33966957e *data/fakeOutbreak.RData
+6c78ac58c5fe4b01507d3c0e248d9e73 *data/fakeOutbreak.RData
 2cb344c2133da976ccf7ab341e81353b *inst/CITATION
 0d5cd8ac8f915095773450ce55e2f669 *man/Rstat.Rd
 c774351eefcfdd1193bc820ceb2efd8c *man/fakeOutbreak.Rd

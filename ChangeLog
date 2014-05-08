@@ -1,3 +1,20 @@
+			CHANGES IN OUTBREAKER VERSION 1.1-3
+
+BUG FIXES
+	o fixed a bug due to the odd conversion of long numbers into
+	characters by read.table - handling specific errors with R 3.1.0
+	on some Mac versions.
+
+
+
+			CHANGES IN OUTBREAKER VERSION 1.1-2
+
+BUG FIXES
+	o fixed a bug due to the odd conversion of long numbers into
+	characters by read.table.
+
+
+
 			CHANGES IN OUTBREAKER VERSION 1.1-1
 NEW FEATURES
 	o added an argument max.kappa which allows to limit the number of
