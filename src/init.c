@@ -87,7 +87,7 @@ int find_maxLike_kappa_i(int T, gentime *gen){
 
 
 /* INITIALIZE PARAMETERS */
-void init_param(param *par, data *dat,  gentime *gen, int *ances, int *init_kappa, double pi_param1, double pi_param2, double init_mu1, double init_gamma, double init_spa1, double init_spa2, double spa1_prior, double spa2_prior, double outlier_threshold, int mut_model, int spa_model, gsl_rng *rng){
+void init_param(param *par, data *dat,  gentime *gen, int *ances, int *init_kappa, double pi_param1, double pi_param2, double phi_param1, double phi_param2, double init_mu1, double init_gamma, double init_spa1, double init_spa2, double spa1_prior, double spa2_prior, double outlier_threshold, int mut_model, int spa_model, int import_method, gsl_rng *rng){
     int i, ancesId, T, TmaxLike;
 
     /* Tinf */
@@ -125,12 +125,17 @@ void init_param(param *par, data *dat,  gentime *gen, int *ances, int *init_kapp
     /* integers */
     par->mut_model = mut_model;
     par->spa_model = spa_model;
+    if(par->mut_model==0) {
+	par->import_method = 2;
+    } else {
+	par->import_method = import_method;
+    }
 
     /* doubles*/
     par->mu1 = init_mu1;
     par->mu1_prior = init_mu1;
     par->gamma = init_gamma;
-    par->pi = gsl_ran_beta (rng,pi_param1,pi_param2);
+    par->pi = gsl_ran_beta(rng,pi_param1,pi_param2);
     par->pi_param1 = pi_param1;
     par->pi_param2 = pi_param2;
     par->spa_param1 = init_spa1;
@@ -138,17 +143,16 @@ void init_param(param *par, data *dat,  gentime *gen, int *ances, int *init_kapp
     par->spa_param1_prior = spa1_prior;
     par->spa_param2_prior = spa2_prior;
     par->outlier_threshold = outlier_threshold;
-    /* par->outlier_threshold = (outlier_threshold>10.0) ? outlier_threshold : 10.0; */
-    /* par->phi = gsl_ran_beta (rng,phi_param1,phi_param2); */
-    /* par->phi_param1 = phi_param1; */
-    /* par->phi_param2 = phi_param2; */
+    par->phi = gsl_ran_beta(rng,phi_param1,phi_param2);
+    par->phi_param1 = phi_param1;
+    par->phi_param2 = phi_param2;
 }
 
 
 
 
 
-void init_mcmc_param(mcmc_param *in, param *par, data *dat, bool move_mut, int *move_alpha, int *move_kappa, bool move_Tinf, bool move_pi, bool move_spa, bool find_import, int burnin, int find_import_at){
+void init_mcmc_param(mcmc_param *in, param *par, data *dat, bool move_mut, int *move_alpha, int *move_kappa, bool move_Tinf, bool move_pi, bool move_phi, bool move_spa, bool find_import, int burnin, int find_import_at){
     int i, N = dat->n;
 
     /* INITIALIZE COUNTERS */
@@ -171,9 +175,11 @@ void init_mcmc_param(mcmc_param *in, param *par, data *dat, bool move_mut, int *
 
 
     /* INITIALIZE MCMC PARAMETERS */
+    /* parameters of proposal distributions */
     in->sigma_mu1 = 0.0001;
     in->sigma_gamma = 1;
     in->sigma_pi = 0.01;
+    in->sigma_phi = 0.01;
     in->sigma_spa1 = 0.01;
     in->sigma_spa2 = 0.01;
     in->step_notune = 0;
@@ -192,32 +198,32 @@ void init_mcmc_param(mcmc_param *in, param *par, data *dat, bool move_mut, int *
 
     /* FILL IN BOOLEANS */
     in->move_mut = move_mut;
-    in->move_spa1 = move_spa;
-    in->move_spa2 = move_spa;
-    /* check that we don't move useless things */
-    if(par->spa_model==0){
-	in->move_spa1 = FALSE;
-	in->move_spa2 = FALSE;
-    }
-    if(par->spa_model==1){
-	in->move_spa2 = FALSE;
-    }
     in->move_Tinf = move_Tinf;
     in->move_pi = move_pi;
-    /* in->move_phi = move_phi; */
+    in->move_phi = move_phi;
+    in->move_spa = move_spa;
     in->find_import = find_import;
 
-    /* ENSURE MOVE-TUNING CONSISTENCY */
-    if(!move_mut){
-	in->tune_mu1 = FALSE;
-	in->tune_gamma = FALSE;
+   /* check that we don't move useless things */
+    if(par->mut_model==0){
+	move_mut = FALSE;
     }
-    if(!in->move_spa1) in->tune_spa1 = FALSE;
-    if(!in->move_spa2) in->tune_spa2 = FALSE;
+    if(par->spa_model==0){
+	in->move_spa = FALSE;
+	in->move_phi = FALSE;
+    }
+    if(par->spa_model==1){
+	in->move_phi = FALSE;
+    }
 
-    if(!move_pi) in->tune_pi = FALSE;
-    /* if(!move_phi) in->tune_phi = FALSE; */
-    in->tune_all = in->tune_mu1 || in->tune_gamma || in->tune_pi || in->tune_spa1 || in->tune_spa2;
+    /* SET TUNING BOOLEANS */
+    in->tune_mu1 = move_mut;
+    in->tune_gamma = (move_mut && par->mut_model>1) ? TRUE : FALSE;
+    in->tune_spa1 = in->move_spa;
+    in->tune_spa2 = (move_spa && par->spa_model>2) ? TRUE : FALSE;
+    in->tune_pi = move_pi;
+    in->tune_phi = move_phi;
+    in->tune_any = in->tune_mu1 || in->tune_gamma || in->tune_spa1 || in->tune_spa2 || in->tune_pi || in->tune_phi || in->tune_spa1 || in->tune_spa2;
 
 } /* end init_mcmc_param */
 

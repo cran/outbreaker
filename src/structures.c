@@ -32,6 +32,9 @@ data *alloc_data(int n, int nSeq, int length){
     /* indices of DNA sequence for each case */
     out->idxCasesInDna = alloc_vec_int(n);
 
+    /* locations of each case */
+    out->locations = alloc_vec_int(n);
+
     return out;
 } /* end alloc_data */
 
@@ -43,6 +46,7 @@ void free_data(data *in){
     free_vec_int(in->dates);
     free_list_dnaseq(in->dna);
     free_vec_int(in->idxCasesInDna);
+    free_vec_int(in->locations);
     free(in);
 } /* end free_data*/
 
@@ -56,6 +60,8 @@ void print_data(data *in){
     print_list_dnaseq(in->dna);
     Rprintf("\n= Indices of DNA sequences for each case=\n");
     print_vec_int(in->idxCasesInDna);
+    Rprintf("\n= Locations of the cases=\n");
+    print_vec_int(in->locations);
 } /* end print_data*/
 
 
@@ -63,11 +69,11 @@ void print_data(data *in){
 
 /* Create a data object using inputs from R */
 data * Rinput2data(unsigned char * DNAbinInput, int *Tcollec, int *n,
-		   int *nSeq, int *length, int *idxCasesInDna){
+		   int *nSeq, int *length, int *idxCasesInDna, int *locations){
     int i, j, count=0;
     data * out = alloc_data(*n, *nSeq, *length);
 
-    /* FILL IN DATES AND INDICES OF DNA */
+    /* FILL IN VECTORS OF LENGTH N: DATES AND INDICES OF DNA */
     for(i=0;i<*n;i++){
 	/* dates */
 	out->dates->values[i] = Tcollec[i];
@@ -75,6 +81,9 @@ data * Rinput2data(unsigned char * DNAbinInput, int *Tcollec, int *n,
 	/* indices of dna sequences for each case */
 	/* -1 if no sequence (index is not in 0:(nSeq-1)) */
         out->idxCasesInDna->values[i] = (idxCasesInDna[i]<0||idxCasesInDna[i]>=*nSeq) ? -1 : idxCasesInDna[i];
+
+	/* locations */
+	out->locations->values[i] = locations[i];
     }
 
     out->timespan = max_vec_int(out->dates) - min_vec_int(out->dates);
@@ -229,6 +238,7 @@ param *alloc_param(int n){
     out->kappa_temp = 0;
     out->mut_model = 0;
     out->spa_model = 0;
+    out->import_method = 0;
 
     /* allocates vectors of integers */
     out->Tinf = alloc_vec_int(n);
@@ -247,9 +257,9 @@ param *alloc_param(int n){
     out->spa_param1_prior = 0.0;
     out->spa_param2_prior = 0.0;
     out->outlier_threshold = 1000.0;
-    /* out->phi = 0.1; */
-    /* out->phi_param1 = 0.0; */
-    /* out->phi_param2 = 0.0; */
+    out->phi = 0.5;
+    out->phi_param1 = 1.0;
+    out->phi_param2 = 1.0;
 
     /* return */
     return out;
@@ -289,11 +299,12 @@ void print_param(param *in){
     Rprintf("%d (param1=%.5f, param2=%.5f)", in->spa_model, in->spa_param1, in->spa_param2);
     Rprintf("\n= parameters of the spatial priors =\n");
     Rprintf("(mean prior param1=%.5f, mean prior param2=%.5f)", in->spa_param1_prior, in->spa_param2_prior);
-
-    /* Rprintf("\n= phi (proportion of external cases) =\n"); */
-    /* Rprintf("%.5f", in->phi); */
-    /* Rprintf("\n= priors on phi (parameter of beta distribution) =\n"); */
-    /* Rprintf("%.5f  %.5f", in->phi_param1, in->phi_param2); */
+    Rprintf("\n= imported case detection method used =\n");
+    Rprintf("%d", in->import_method);
+    Rprintf("\n= phi (proportion of nosocomial cases) =\n");
+    Rprintf("%.5f", in->phi);
+    Rprintf("\n= priors on phi (parameter of beta distribution) =\n");
+    Rprintf("%.5f  %.5f", in->phi_param1, in->phi_param2);
 } /* end print_param*/
 
 
@@ -309,6 +320,9 @@ void copy_param(param *in, param *out){
     out->pi = in->pi;
     out->pi_param1 = in->pi_param1;
     out->pi_param2 = in->pi_param2;
+    out->phi = in->phi;
+    out->phi_param1 = in->phi_param1;
+    out->phi_param2 = in->phi_param2;
     out->spa_param1 = in->spa_param1;
     out->spa_param2 = in->spa_param2;
     out->spa_param1_prior = in->spa_param1_prior;
@@ -316,6 +330,7 @@ void copy_param(param *in, param *out){
     out->outlier_threshold = in->outlier_threshold;
     out->mut_model = in->mut_model;
     out->spa_model = in->spa_model;
+    out->import_method = in->import_method;
 
     copy_vec_int(in->Tinf,out->Tinf);
     copy_vec_int(in->alpha,out->alpha);
@@ -368,6 +383,7 @@ mcmc_param *alloc_mcmc_param(int n){
     out->move_kappa = alloc_vec_double(n);
 
     /* FILL IN INTEGERS */
+    /* accept/reject counters */
     out->n_accept_mu1 = 0;
     out->n_reject_mu1 = 0;
     out->n_accept_gamma = 0;
@@ -383,30 +399,35 @@ mcmc_param *alloc_mcmc_param(int n){
     out->n_accept_kappa = 0;
     out->n_reject_kappa = 0;
     out->n_like_zero = 0;
-    out->tune_all = TRUE;
+
+    /* movement */
+    out->move_mut = TRUE;
+    out->move_pi = TRUE;
+    out->move_phi = TRUE;
+    out->move_spa = TRUE;
+    /* out->move_phi = TRUE; */
+
+    /* tuning */
+    out->tune_any = TRUE;
     out->tune_mu1 = TRUE;
     out->tune_gamma = TRUE;
     out->tune_pi = TRUE;
-    /* out->tune_phi = TRUE; */
+    out->tune_phi = TRUE;
     out->step_notune = -1;
-    out->move_mut = TRUE;
-    /* out->move_alpha = TRUE; */
-    /* out->move_kappa = TRUE; */
-    out->move_pi = TRUE;
-    out->move_spa1 = TRUE;
-    out->move_spa2 = TRUE;
-    /* out->move_phi = TRUE; */
+
+    /* misc */
     out->burnin=0;
     out->find_import_at=10000;
     out->find_import=TRUE;
 
     /* FILL IN DOUBLES */
+    /* parameters of proposal */
     out->sigma_mu1 = 0.0;
     out->sigma_gamma = 0.0;
     out->sigma_pi = 0.0;
+    out->sigma_phi = 0.0;
     out->sigma_spa1 = 0.0;
     out->sigma_spa2 = 0.0;
-    /* out->sigma_phi = 0.0; */
     out->lambda_Tinf = 0.0;
 
 
@@ -436,9 +457,9 @@ void print_mcmc_param(mcmc_param *in){
     Rprintf("\nsigma for mu1: %.10f",in->sigma_mu1);
     Rprintf("\nsigma for gamma: %.10f",in->sigma_gamma);
     Rprintf("\nsigma for pi: %.10f",in->sigma_pi);
+    Rprintf("\nsigma for phi: %.10f",in->sigma_phi);
     Rprintf("\nsigma for spa1: %.10f",in->sigma_spa1);
     Rprintf("\nsigma for spa2: %.10f",in->sigma_spa2);
-    /* Rprintf("\nsigma for phi: %.10f",in->sigma_phi); */
     Rprintf("\nlambda for Tinf: %.10f",in->lambda_Tinf);
     Rprintf("\nnb moves for Tinf: %d",in->n_move_Tinf);
     Rprintf("\nnb moves for alpha: %d",in->n_move_alpha);
@@ -450,11 +471,11 @@ void print_mcmc_param(mcmc_param *in){
 
     Rprintf("\npi: nb. accepted: %d   nb. rejected: %d   (acc/rej ratio:%.3f)", in->n_accept_pi, in->n_reject_pi, (double) in->n_accept_pi / in->n_reject_pi);
 
+    Rprintf("\nphi: nb. accepted: %d   nb. rejected: %d   (acc/rej ratio:%.3f)", in->n_accept_phi, in->n_reject_phi, (double) in->n_accept_phi / in->n_reject_phi);
+
     Rprintf("\nspa1: nb. accepted: %d   nb. rejected: %d   (acc/rej ratio:%.3f)", in->n_accept_spa1, in->n_reject_spa1, (double) in->n_accept_spa1 / in->n_reject_spa1);
 
     Rprintf("\nspa2: nb. accepted: %d   nb. rejected: %d   (acc/rej ratio:%.3f)", in->n_accept_spa2, in->n_reject_spa2, (double) in->n_accept_spa2 / in->n_reject_spa2);
-
-    /* Rprintf("\nphi: nb. accepted: %d   nb. rejected: %d   (acc/rej ratio:%.3f)", in->n_accept_phi, in->n_reject_phi, (double) in->n_accept_phi / in->n_reject_phi); */
 
     Rprintf("\nTinf: nb. accepted: %d   nb. rejected: %d   (acc/rej ratio:%.3f)", in->n_accept_Tinf, in->n_reject_Tinf, (double) in->n_accept_Tinf / in->n_reject_Tinf);
 
@@ -478,13 +499,13 @@ void print_mcmc_param(mcmc_param *in){
     Rprintf("\nVector of candidate ancestors (proba):\n");
     print_vec_double(in->candid_ances_proba);
 
-    Rprintf("\nTuned parameters:");
+    Rprintf("\nTuned parameters: ");
     if(in->tune_mu1) Rprintf("mu1 ");
     if(in->tune_gamma) Rprintf("gamma ");
     if(in->tune_pi) Rprintf("pi ");
-    if(in->tune_spa1) Rprintf("spa1");
-    if(in->tune_spa2) Rprintf("spa2");
-    /* if(in->tune_phi) Rprintf("phi "); */
+    if(in->tune_phi) Rprintf("phi ");
+    if(in->tune_spa1) Rprintf("spa1 ");
+    if(in->tune_spa2) Rprintf("spa2 ");
     Rprintf("\nTuning stopped at step %d\n", in->step_notune);
 
     Rprintf("\nMoved parameters:");
@@ -493,9 +514,8 @@ void print_mcmc_param(mcmc_param *in){
     /* if(in->move_kappa) Rprintf("kappa "); */
     if(in->move_Tinf) Rprintf("Tinf ");
     if(in->move_pi) Rprintf("pi ");
-    if(in->move_spa1) Rprintf("spa1 ");
-    if(in->move_spa2) Rprintf("spa2 ");
-    /* if(in->move_phi) Rprintf("phi "); */
+    if(in->move_phi) Rprintf("phi ");
+    if(in->move_spa) Rprintf("spa ");
     Rprintf("\nMove alpha_i:");
     print_vec_double(in->move_alpha);
     Rprintf("\nMove kappa_i:");
@@ -525,6 +545,8 @@ void copy_mcmc_param(mcmc_param *in, mcmc_param *out){
     out->n_reject_gamma = in->n_reject_gamma;
     out->n_accept_pi = in->n_accept_pi;
     out->n_reject_pi = in->n_reject_pi;
+    out->n_accept_phi = in->n_accept_phi;
+    out->n_reject_phi = in->n_reject_phi;
     out->n_accept_spa1 = in->n_accept_spa1;
     out->n_reject_spa1 = in->n_reject_spa1;
     out->n_accept_spa2 = in->n_accept_spa2;
@@ -548,7 +570,7 @@ void copy_mcmc_param(mcmc_param *in, mcmc_param *out){
     out->sigma_spa2 = in->sigma_spa2;
     out->n_like_zero = in->n_like_zero;
 
-    out->tune_all = in->tune_all;
+    out->tune_any = in->tune_any;
     out->tune_mu1 = in->tune_mu1;
     out->tune_gamma = in->tune_gamma;
     out->tune_pi = in->tune_pi;
@@ -558,8 +580,8 @@ void copy_mcmc_param(mcmc_param *in, mcmc_param *out){
 
     out->move_mut = in->move_mut;
     out->move_pi = in->move_pi;
-    out->move_spa1 = in->move_spa1;
-    out->move_spa2 = in->move_spa2;
+    out->move_phi = in->move_phi;
+    out->move_spa = in->move_spa;
     out->burnin = in->burnin;
     out->find_import_at = in->find_import_at;
     out->find_import = in->find_import;
