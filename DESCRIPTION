@@ -1,17 +1,20 @@
 Package: outbreaker
-Version: 1.1-6
-Date: 2015-09-11
+Version: 1.1-7
+Date: 2015-12-08
 Title: Bayesian Reconstruction of Disease Outbreaks by Combining
         Epidemiologic and Genomic Data
 Author: Thibaut Jombart <thibautjombart@gmail.com>, Anne Cori, Joel Hellewell
 Maintainer: Thibaut Jombart <thibautjombart@gmail.com>
 Suggests: EpiEstim, OutbreakTools
 Depends: R (>= 3.0.0), parallel
-Imports: utils, stats, graphics, grDevices, ape, igraph, adegenet
+Imports: utils, graphics, ape, igraph, adegenet
 URL: http://sites.google.com/site/therepiproject/r-pac/outbreaker
-Description: Bayesian reconstruction of disease outbreaks using epidemiological and genetic information.
+Description: Bayesian reconstruction of disease outbreaks using epidemiological
+    and genetic information.
 License: GPL (>= 2)
+SystemRequirements: gsl (>= 1.12)
+RoxygenNote: 5.0.1
 NeedsCompilation: yes
-Packaged: 2015-09-11 16:10:43 UTC; thibaut
+Packaged: 2015-12-07 18:57:58 UTC; thibaut
 Repository: CRAN
-Date/Publication: 2015-09-11 18:22:00
+Date/Publication: 2015-12-07 23:13:36
