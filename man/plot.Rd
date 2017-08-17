@@ -2,8 +2,10 @@
 % Please edit documentation in R/plot.R
 \name{plotChains}
 \alias{plotChains}
+\alias{transGraph}
 \alias{plotOutbreak}
 \alias{transGraph}
+\alias{plotOutbreak}
 \title{Plot outbreaker's results}
 \usage{
 plotChains(x, what = "post", type = c("series", "density"), burnin = 0,
@@ -51,6 +53,8 @@ different runs.}
 \item{posi}{a character string indicating the position of the legend (see
 \code{?legend}).}
 
+\item{\dots}{further arguments to be passed to other functions.}
+
 \item{labels}{the labels to be used to name the nodes of the graph (cases).}
 
 \item{threshold}{the minimum support for ancestries to be plotted; 'support'
@@ -88,8 +92,6 @@ corresponding to distances larger than a given number.}
 \item{lwd.arrow}{a numeric value indicating the size factor for the arrows.}
 
 \item{xlim}{the limits of the X axis; if NULL, determined from the data.}
-
-\item{\dots}{further arguments to be passed to other functions.}
 }
 \description{
 These are the main functions used for generating graphics from the raw
@@ -133,4 +135,3 @@ detach(fakeOutbreak)
 \author{
 Thibaut Jombart \email{t.jombart@imperial.ac.uk}
 }
-

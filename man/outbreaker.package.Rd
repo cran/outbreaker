@@ -13,4 +13,3 @@ Check tutorials and documentation at:
 \author{
 Thibaut Jombart \email{t.jombart@imperial.ac.uk}
 }
-

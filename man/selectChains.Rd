@@ -47,4 +47,3 @@ lowest mean log-posterior value, and go back to 1.  }
 \author{
 Thibaut Jombart \email{t.jombart@imperial.ac.uk}
 }
-

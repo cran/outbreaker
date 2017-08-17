@@ -3,6 +3,7 @@
 \name{outbreaker}
 \alias{outbreaker}
 \alias{outbreaker.parallel}
+\alias{outbreaker.parallel}
 \title{Outbreaker: disease outbreak reconstruction using genetic data}
 \usage{
 outbreaker(dna = NULL, dates, idx.dna = NULL, mut.model = 1,
@@ -34,7 +35,8 @@ outbreaker.parallel(n.runs, parallel = TRUE, n.cores = NULL, dna = NULL,
 \item{dna}{the DNA sequences in \code{DNAbin} format (see
 \code{\link[ape]{read.dna}} in the ape package); this can be imported from a
 fasta file (extension .fa, .fas, or .fasta) using \code{adegenet}'s function
-\link[adegenet]{fasta2DNAbin}; alternatively, a matrix of single characters strings.}
+\link[adegenet]{fasta2DNAbin}; alternatively, a matrix of single characters strings,
+in which case only the mutation model 1 is available.}
 
 \item{dates}{a vector indicating the collection dates, provided either as
 integer numbers or in a usual date format such as \code{Date} or
@@ -46,7 +48,8 @@ sequence, and the order of the sequences matches that of the cases.}
 
 \item{mut.model}{an integer indicating the mutational model to be used; 1:
 one single mutation rate; 2: two rates, transitions (mu1) / transversions
-(mu2).}
+(mu2); if 'dna' is a sequence of character strings (not a DNAbin object), only
+the model 1 is available.}
 
 \item{spa.model}{an integer indicating the spatial model to be used. 0: no
 spatial model (default). 1: exponential kernel (under development).}
@@ -278,9 +281,6 @@ detach(fakeOutbreak)
 
 
 }
-\author{
-Thibaut Jombart (\email{t.jombart@imperial.ac.uk})
-}
 \references{
 Jombart T, Cori A, Didelot X, Cauchemez S, Fraser C and Ferguson
 N (accepted).  Bayesian reconstruction of disease outbreaks by combining
@@ -311,4 +311,6 @@ converged towards different posterior modes.
 
 }
 }
-
+\author{
+Thibaut Jombart (\email{t.jombart@imperial.ac.uk})
+}

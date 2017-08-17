@@ -2,8 +2,8 @@
 % Please edit documentation in R/data.R
 \docType{data}
 \name{simulated outbreak dataset}
-\alias{fakeOutbreak}
 \alias{simulated outbreak dataset}
+\alias{fakeOutbreak}
 \title{Toy outbreak dataset used to illustrate outbreaker}
 \description{
 This toy outbreak dataset was simulated using \code{\link{simOutbreak}}.
@@ -93,4 +93,3 @@ detach(fakeOutbreak)
 Thibaut Jombart \email{t.jombart@imperial.ac.uk}
 }
 \keyword{datasets}
-
